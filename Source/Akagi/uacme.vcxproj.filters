@@ -25,6 +25,12 @@
     <Filter Include="Source Files\methods">
       <UniqueIdentifier>{6a18d07e-0b0d-455a-b4c2-1379f5934479}</UniqueIdentifier>
     </Filter>
+    <Filter Include="ldr">
+      <UniqueIdentifier>{751f7002-5a6c-4d2e-9296-3b8132e640f8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="shared">
+      <UniqueIdentifier>{629ff935-c53a-4df8-99ee-29698f72e6b8}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.c">
@@ -117,6 +123,51 @@
     <ClCompile Include="methods\simda.c">
       <Filter>Source Files\methods</Filter>
     </ClCompile>
+    <ClCompile Include="..\Shared\ldr.c">
+      <Filter>ldr</Filter>
+    </ClCompile>
+    <ClCompile Include="methods\tyranid.c">
+      <Filter>Source Files\methods</Filter>
+    </ClCompile>
+    <ClCompile Include="methods\wusa.c">
+      <Filter>Source Files\methods</Filter>
+    </ClCompile>
+    <ClCompile Include="aic.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="methods\hakril.c">
+      <Filter>Source Files\methods</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Shared\u64tohex.c">
+      <Filter>minirtl</Filter>
+    </ClCompile>
+    <ClCompile Include="methods\b33f.c">
+      <Filter>Source Files\methods</Filter>
+    </ClCompile>
+    <ClCompile Include="methods\api0cradle.c">
+      <Filter>Source Files\methods</Filter>
+    </ClCompile>
+    <ClCompile Include="methods\bytecode77.c">
+      <Filter>Source Files\methods</Filter>
+    </ClCompile>
+    <ClCompile Include="methods\deroko.c">
+      <Filter>Source Files\methods</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Shared\windefend.c">
+      <Filter>shared</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Shared\u64tostr.c">
+      <Filter>minirtl</Filter>
+    </ClCompile>
+    <ClCompile Include="methods\comsup.c">
+      <Filter>Source Files\methods</Filter>
+    </ClCompile>
+    <ClCompile Include="methods\rinn.c">
+      <Filter>Source Files\methods</Filter>
+    </ClCompile>
+    <ClCompile Include="methods\dwells.c">
+      <Filter>Source Files\methods</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="global.h">
@@ -138,12 +189,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="compress.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="consts.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="manifest.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\Shared\_filename.h">
@@ -182,11 +227,59 @@
     <ClInclude Include="methods\simda.h">
       <Filter>Header Files\methods</Filter>
     </ClInclude>
-    <ClInclude Include="methods\sirefef.h">
-      <Filter>Header Files\methods</Filter>
-    </ClInclude>
     <ClInclude Include="methods\apphelp.h">
       <Filter>Header Files\methods</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\ldr.h">
+      <Filter>ldr</Filter>
+    </ClInclude>
+    <ClInclude Include="methods\tyranid.h">
+      <Filter>Header Files\methods</Filter>
+    </ClInclude>
+    <ClInclude Include="methods\wusa.h">
+      <Filter>Header Files\methods</Filter>
+    </ClInclude>
+    <ClInclude Include="aic.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="methods\hakril.h">
+      <Filter>Header Files\methods</Filter>
+    </ClInclude>
+    <ClInclude Include="methods\b33f.h">
+      <Filter>Header Files\methods</Filter>
+    </ClInclude>
+    <ClInclude Include="methods\api0cradle.h">
+      <Filter>Header Files\methods</Filter>
+    </ClInclude>
+    <ClInclude Include="methods\bytecode77.h">
+      <Filter>Header Files\methods</Filter>
+    </ClInclude>
+    <ClInclude Include="methods\deroko.h">
+      <Filter>Header Files\methods</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\shared.h">
+      <Filter>shared</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\windefend.h">
+      <Filter>shared</Filter>
+    </ClInclude>
+    <ClInclude Include="secrets.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="methods\comsup.h">
+      <Filter>Header Files\methods</Filter>
+    </ClInclude>
+    <ClInclude Include="methods\rinn.h">
+      <Filter>Header Files\methods</Filter>
+    </ClInclude>
+    <ClInclude Include="methods\elvint.h">
+      <Filter>Header Files\methods</Filter>
+    </ClInclude>
+    <ClInclude Include="methods\dwells.h">
+      <Filter>Header Files\methods</Filter>
+    </ClInclude>
+    <ClInclude Include="encresource.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -204,5 +297,10 @@
     <Image Include="akagi.ico">
       <Filter>Resource Files</Filter>
     </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="export.def">
+      <Filter>Header Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

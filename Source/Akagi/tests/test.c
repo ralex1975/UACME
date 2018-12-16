@@ -1,12 +1,12 @@
 /*******************************************************************************
 *
-*  (C) COPYRIGHT AUTHORS, 2017
+*  (C) COPYRIGHT AUTHORS, 2017 - 2018
 *
 *  TITLE:       TEST.C
 *
-*  VERSION:     2.70
+*  VERSION:     3.10
 *
-*  DATE:        25 Mar 2017
+*  DATE:        11 Nov 2018
 *
 * THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF
 * ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED
@@ -16,6 +16,14 @@
 *******************************************************************************/
 #include "global.h"
 
+/*
+* ucmTestRoutine
+*
+* Purpose:
+*
+* Test routine, can serve multiple purposes.
+*
+*/
 BOOL ucmTestRoutine(
     _In_opt_ PVOID PayloadCode,
     _In_opt_ ULONG PayloadSize)

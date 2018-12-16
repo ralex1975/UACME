@@ -1,12 +1,12 @@
 /*******************************************************************************
 *
-*  (C) COPYRIGHT AUTHORS, 2015 - 2017
+*  (C) COPYRIGHT AUTHORS, 2015 - 2018
 *
 *  TITLE:       MAIN.C
 *
-*  VERSION:     2.70
+*  VERSION:     3.03
 *
-*  DATE:        24 Mar 2017
+*  DATE:        11 Oct 2018
 *
 *  ShellCode.
 *
@@ -19,18 +19,14 @@
 
 //disable nonmeaningful warnings.
 #pragma warning(disable: 4005) // macro redefinition
+#pragma warning(disable: 4055) // %s : from data pointer %s to function pointer %s
+#pragma warning(disable: 4152) // nonstandard extension, function/data pointer conversion in expression
+#pragma warning(disable: 4201) // nonstandard extension used : nameless struct/union
+#pragma warning(disable: 6102) // Using %s from failed function call at line %u
 
 #include <Windows.h>
 #include "shared\ntos.h"
-
-#if (_MSC_VER >= 1900) 
-#ifdef _DEBUG
-#pragma comment(lib, "vcruntimed.lib")
-#pragma comment(lib, "ucrtd.lib")
-#else
-#pragma comment(lib, "libvcruntime.lib")
-#endif
-#endif
+#include "shared\libinc.h"
 
 typedef HMODULE(WINAPI *pfnLoadLibraryA)(LPCSTR lpLibFileName);
 typedef DWORD(WINAPI *pfnExpandEnvironmentStringsA)(LPCSTR lpSrc, LPSTR lpDst, DWORD nSize);

@@ -16,6 +16,9 @@
     <Filter Include="minirtl">
       <UniqueIdentifier>{2c7d3d0a-54ea-44ba-8570-6f9005a7d257}</UniqueIdentifier>
     </Filter>
+    <Filter Include="shared">
+      <UniqueIdentifier>{b9d28ade-4cf5-427b-9c4d-03dcf4534593}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.c">
@@ -45,6 +48,21 @@
     <ClCompile Include="..\Shared\_strncpy.c">
       <Filter>minirtl</Filter>
     </ClCompile>
+    <ClCompile Include="..\Shared\util.c">
+      <Filter>shared</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Shared\ultostr.c">
+      <Filter>minirtl</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Shared\u64tostr.c">
+      <Filter>minirtl</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Shared\windefend.c">
+      <Filter>shared</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Shared\ultohex.c">
+      <Filter>minirtl</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="version.rc">
@@ -58,11 +76,17 @@
     <ClInclude Include="..\Shared\minirtl.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="wbemcomn.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\Shared\_filename.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\util.h">
+      <Filter>shared</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\shared.h">
+      <Filter>shared</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\windefend.h">
+      <Filter>shared</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

